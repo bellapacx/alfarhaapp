@@ -21,7 +21,7 @@ origins = [
     "https://alfarhaapi.vercel.app",
     "https://alfarhaadmin.vercel.app",
     "https://www.alfarhabingo.com",
-    "https://admin.alfarhabingo.com/"
+    "https://admin.alfarhabingo.com"
     # add other origins if needed
 ]
 
