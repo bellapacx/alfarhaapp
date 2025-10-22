@@ -6,7 +6,7 @@ from firebase_client import db
 from models.shop import Shop
 from utils.token import create_access_token, verify_token
 from passlib.context import CryptContext
-
+from collections import defaultdict
 from firebase_admin import firestore  # Ensure you have firebase_admin installed
 
 router = APIRouter()
@@ -279,3 +279,75 @@ def update_commission(shop_id: str, body: CommissionUpdate):
         "shop_id": shop_id,
         "new_commission_rate": body.commission_rate
     }
+
+def get_week_id(date_str: str):
+    """Return (year, week_number) tuple from a date string (YYYY-MM-DD)."""
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    year, week_num, _ = dt.isocalendar()
+    return f"{year}-W{week_num:02d}"
+
+@router.get("/shop_commission/{shop_id}")
+async def get_shop_commission(shop_id: str):
+    """
+    Aggregate all game rounds by day and week for a given shop.
+    Returns both daily_commissions and weekly_commissions.
+    """
+    try:
+        rounds_ref = db.collection("game_rounds")
+        query = rounds_ref.where("shop_id", "==", shop_id)
+        docs = query.stream()
+
+        # 🗓️ Group by day and week
+        daily_data = defaultdict(lambda: {"total_commission": 0.0, "total_payment": 0.0})
+        weekly_data = defaultdict(lambda: {"total_commission": 0.0, "total_payment": 0.0})
+
+        for doc in docs:
+            data = doc.to_dict()
+            date_str = data.get("date")
+            if not date_str:
+                continue
+
+            commission = float(data.get("commission_amount", 0))
+            payment = float(data.get("prize", 0))
+            week_id = get_week_id(date_str)
+
+            # Add to daily total
+            daily_data[date_str]["total_commission"] += commission
+            daily_data[date_str]["total_payment"] += payment
+
+            # Add to weekly total
+            weekly_data[week_id]["total_commission"] += commission
+            weekly_data[week_id]["total_payment"] += payment
+
+        # Format response
+        daily_commissions = [
+            {
+                "date": date,
+                "total_commission": round(values["total_commission"], 2),
+                "total_payment": round(values["total_payment"], 2),
+            }
+            for date, values in sorted(daily_data.items())
+        ]
+
+        weekly_commissions = [
+            {
+                "week_id": week_id,
+                "week": week_id,
+                "total_commission": round(values["total_commission"], 2),
+                "total_payment": round(values["total_payment"], 2),
+            }
+            for week_id, values in sorted(weekly_data.items())
+        ]
+
+        if not daily_commissions and not weekly_commissions:
+            raise HTTPException(status_code=404, detail="No rounds found for this shop")
+
+        return {
+            "shop_id": shop_id,
+            "daily_commissions": daily_commissions,
+            "weekly_commissions": weekly_commissions,
+        }
+
+    except Exception as e:
+        print("🔥 Error fetching commissions:", e)
+        raise HTTPException(status_code=500, detail=str(e))
