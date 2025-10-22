@@ -61,7 +61,7 @@ async def start_game(data: StartGameRequest):
 
     # Calculate commission
     total_bet = data.total_cards * data.bet_per_card
-    commission_amount = total_bet 
+    commission_amount = total_bet * 0.3
 
     # Check shop balance for prepaid/postpaid
     billing_type = shop_data.get("billing_type", "prepaid")
